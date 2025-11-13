@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>💰 Registro Semanal - Final</title>
+<style>
+  body { font-family: "Segoe UI", Arial, sans-serif; background:#f6f8fa; color:#222; margin:0; padding:18px; }
+  h1 { text-align:center; color:#1f6feb; margin-bottom:10px; }
+  .container { max-width:760px; margin:auto; background:#fff; padding:18px; border-radius:12px; box-shadow:0 2px 10px rgba(0,0,0,0.08); }
+  .fila { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:8px; }
+  select, input { padding:8px; border-radius:8px; border:1px solid #ccc; font-size:14px; }
+  input[type="number"] { width:110px; }
+  button { padding:9px 12px; border-radius:8px; border:none; background:#1f6feb; color:#fff; cursor:pointer; }
+  button.secondary { background:#e53e3e; }
+  button:active { transform:translateY(1px); }
+  table { width:100%; border-collapse:collapse; margin-top:12px; }
+  th, td { padding:10px; text-align:center; border-bottom:1px solid #eee; font-size:14px; }
+  th { background:#eef6ff; color:#1f6feb; }
+  .positivo { color:green; font-weight:600; }
+  .negativo { color:red; font-weight:600; }
+  .resumen { margin-top:16px; background:#f0f4ff; padding:12px; border-radius:10px; }
+  .small { font-size:13px; color:#666; }
+</style>
+</head>
+<body>
+  <h1>💰 Registro Semanal de Ingresos y Gastos</h1>
+
+  <div class="container">
+    <div class="fila">
+      <label for="tipo">Tipo:</label>
+      <select id="tipo">
+        <option>Gasto 💸</option>
+        <option>Ingreso 💰</option>
+      </select>
+
+      <label for="dia">Día:</label>
+      <select id="dia">
+        <option>Lunes</option><option>Martes</option><option>Miércoles</option>
+        <option>Jueves</option><option>Viernes</option><option>Sábado</option><option>Domingo</option>
+      </select>
+
+      <label for="categoria">Categoría:</label>
+      <select id="categoria">
+        <option>Comida 🍽️</option><option>Transporte 🚗</option><option>Ocio 🎮</option><option>Otros 💼</option>
+      </select>
+    </div>
+
+    <div class="fila">
+      <input id="descripcion" placeholder="Detalle / Subcategoría (ej: Kiosco)" style="flex:1">
+      <input id="monto" type="number" step="0.01" placeholder="Monto $" min="0">
+      <button id="btnAgregar">Agregar</button>
+      <button id="btnBorrar" class="secondary">🗑️ Borrar todo</button>
+    </div>
+
+    <div class="small">Si no completás descripción, se guarda como '-' — para agilizar la carga.</div>
+
+    <table id="tablaGastos" aria-live="polite">
+      <thead>
+        <tr><th>Tipo</th><th>Día</th><th>Categoría</th><th>Detalle</th><th>Monto</th><th></th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <div class="resumen">
+      <h3>📅 Resumen Semanal</h3>
+      <div id="resumenDiario"></div>
+      <h3>📊 Resumen por Categoría</h3>
+      <div id="resumenCategoria"></div>
+      <h3>💵 Total General: <span id="totalGeneral">0.00</span> $</h3>
+    </div>
+  </div>
+
+<script>
+(function(){
+  // lee desde localStorage o crea array vacío
+  const STORAGE_KEY = "gastos_final";
+  let gastos = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+
+  // elementos
+  const tipoEl = document.getElementById("tipo");
+  const diaEl = document.getElementById("dia");
+  const catEl = document.getElementById("categoria");
+  const descEl = document.getElementById("descripcion");
+  const montoEl = document.getElementById("monto");
+  const btnAgregar = document.getElementById("btnAgregar");
+  const btnBorrar = document.getElementById("btnBorrar");
+  const tbody = document.querySelector("#tablaGastos tbody");
+  const resumenDiaEl = document.getElementById("resumenDiario");
+  const resumenCatEl = document.getElementById("resumenCategoria");
+  const totalEl = document.getElementById("totalGeneral");
+
+  function guardar() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(gastos));
+    } catch(e) {
+      console.error("Error guardando en localStorage:", e);
+    }
+  }
+
+  function validarMonto(val) {
+    // acepta 0.01 en adelante
+    if (val === "" || val === null) return false;
+    const n = Number(val);
+    return !isNaN(n) && isFinite(n) && n > 0;
+  }
+
+  function agregar() {
+    // obtener valores
+    const tipo = tipoEl.value.trim();
+    const dia = diaEl.value.trim();
+    const categoria = catEl.value.trim();
+    const descripcion = descEl.value.trim() || "-";
+    const montoRaw = montoEl.value;
+
+    if (!validarMonto(montoRaw)) {
+      alert("Ingresa un monto válido (> 0).");
+      montoEl.focus();
+      return;
+    }
+
+    const monto = Number(parseFloat(montoRaw).toFixed(2));
+
+    // crear objeto
+    const registro = { tipo, dia, categoria, descripcion, monto };
+    gastos.push(registro);
+    guardar();
+    limpiarInputs();
+    render();
+    console.log("Registro agregado:", registro);
+  }
+
+  function limpiarInputs() {
+    descEl.value = "";
+    montoEl.value = "";
+    // dejamos tipo/dia/categoria para facilitar cargas repetidas
+    montoEl.focus();
+  }
+
+  function eliminar(index) {
+    if (!confirm("¿Eliminar este registro?")) return;
+    gastos.splice(index, 1);
+    guardar();
+    render();
+  }
+
+  function borrarTodo() {
+    if (!confirm("¿Borrar todos los registros?")) return;
+    gastos = [];
+    guardar();
+    render();
+  }
+
+  function render() {
+    // tabla
+    tbody.innerHTML = "";
+    gastos.forEach((g, i) => {
+      const tr = document.createElement("tr");
+      const signo = g.tipo.toLowerCase().includes("ingreso") ? "+" : "-";
+      const clase = signo === "+" ? "positivo" : "negativo";
+      tr.innerHTML = `
+        <td>${g.tipo}</td>
+        <td>${g.dia}</td>
+        <td>${g.categoria}</td>
+        <td>${escapeHtml(g.descripcion)}</td>
+        <td class="${clase}">${signo}$${g.monto.toFixed(2)}</td>
+        <td><button onclick="(function(){document.querySelector('body').dispatchEvent(new CustomEvent('eliminar',{detail:${i}}))})()">❌</button></td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    // resumen por día y por categoría
+    const resumenDia = {};
+    const resumenCat = {};
+    let total = 0;
+
+    gastos.forEach(g => {
+      const valor = g.tipo.toLowerCase().includes("ingreso") ? g.monto : -g.monto;
+      resumenDia[g.dia] = (resumenDia[g.dia] || 0) + valor;
+      resumenCat[g.categoria] = (resumenCat[g.categoria] || 0) + valor;
+      total += valor;
+    });
+
+    resumenDiaEl.innerHTML = Object.keys(resumenDia).length
+      ? Object.entries(resumenDia).map(([d,v]) => `${d}: <span class="${v>=0?'positivo':'negativo'}">$${v.toFixed(2)}</span>`).join("<br>")
+      : "Sin datos.";
+
+    resumenCatEl.innerHTML = Object.keys(resumenCat).length
+      ? Object.entries(resumenCat).map(([c,v]) => `${c}: <span class="${v>=0?'positivo':'negativo'}">$${v.toFixed(2)}</span>`).join("<br>")
+      : "Sin datos.";
+
+    totalEl.textContent = total.toFixed(2);
+  }
+
+  // helper para prevenir inyección simple en tabla
+  function escapeHtml(str){
+    return String(str).replace(/[&<>"'`=\/]/g, function(s) {
+      return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;","/":"&#x2F;","`":"&#x60;","=":"&#x3D;"}[s];
+    });
+  }
+
+  // Listener para botones y eventos
+  btnAgregar.addEventListener('click', agregar);
+  btnBorrar.addEventListener('click', borrarTodo);
+
+  // permitimos Enter en el campo monto para agregar rápido
+  montoEl.addEventListener('keydown', function(e){
+    if (e.key === "Enter") {
+      agregar();
+    }
+  });
+
+  // evento global para eliminar (porque el onclick inyectado arriba no puede llamar directamente a eliminar por alcance)
+  document.body.addEventListener('eliminar', function(ev){
+    const idx = ev.detail;
+    eliminar(idx);
+  });
+
+  // primer render
+  render();
+
+  // Exponer en window para debugging si lo necesitás
+  window._gastos_app = { gastos, render, agregar, eliminar, guardar };
+})();
+</script>
+</body>
+</html>
